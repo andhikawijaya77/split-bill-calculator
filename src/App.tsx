@@ -4,6 +4,8 @@ function App() {
   const [totalBill, setTotalBill] = useState('')
   const [numPeople, setNumPeople] = useState('')
   const [perPerson, setPerPerson] = useState<number | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
 
   const calculateSplit = () => {
     const bill = parseFloat(totalBill)
@@ -20,6 +22,64 @@ function App() {
     setTotalBill('')
     setNumPeople('')
     setPerPerson(null)
+    setScanError('')
+  }
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsScanning(true)
+    setScanError('')
+
+    try {
+      // Use OCR.space free API
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('apikey', 'K87899142388957') // Free public key
+      formData.append('language', 'eng')
+
+      const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.ParsedResults?.[0]?.ParsedText) {
+        const text = result.ParsedResults[0].ParsedText
+        
+        // Try to extract total amount (various patterns)
+        const patterns = [
+          /total[:\s]*\$?\s*(\d+\.?\d*)/i,
+          /amount[:\s]*\$?\s*(\d+\.?\d*)/i,
+          /\$\s*(\d+\.?\d+)/,
+          /(\d+\.\d{2})/g, // Find all dollar amounts
+        ]
+
+        let found = false
+        for (const pattern of patterns) {
+          const match = text.match(pattern)
+          if (match) {
+            const amount = match[1] || match[0]
+            setTotalBill(amount.replace('$', '').trim())
+            found = true
+            break
+          }
+        }
+
+        if (!found) {
+          setScanError('Could not find total amount. Please enter manually.')
+        }
+      } else {
+        setScanError('Could not read image. Please try another or enter manually.')
+      }
+    } catch (error) {
+      setScanError('Scan failed. Please enter amount manually.')
+      console.error('OCR error:', error)
+    } finally {
+      setIsScanning(false)
+    }
   }
 
   return (
@@ -32,10 +92,10 @@ function App() {
           </svg>
         </div>
         <h1 className="text-4xl font-bold text-slate-900 mb-3">
-          Split Bill Calculator
+          Split Bill Auto Generator
         </h1>
         <p className="text-slate-600 text-lg">
-          Calculate and split bills instantly with your friends. Fast, accurate, and easy to use.
+          Scan your bill with your camera or enter manually. Split it instantly with your friends.
         </p>
       </div>
 
@@ -49,6 +109,50 @@ function App() {
         </div>
 
         <div className="space-y-6">
+          {/* Scan Bill Section */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Scan Bill (Auto-detect total)
+            </label>
+            <div className="relative">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageUpload}
+                disabled={isScanning}
+                className="w-full px-4 py-3 border-2 border-dashed border-blue-300 rounded-md text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              {isScanning && (
+                <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center rounded-md">
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm font-medium">Scanning bill...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {scanError && (
+              <p className="text-sm text-orange-600">{scanError}</p>
+            )}
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-slate-500">or enter manually</span>
+            </div>
+          </div>
+
           {/* Total Bill Input */}
           <div className="space-y-2">
             <label htmlFor="total-bill" className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -123,12 +227,13 @@ function App() {
         <div className="bg-white rounded-lg shadow p-6 text-center">
           <div className="mx-auto w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
             <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">Instant Calculation</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">Auto Bill Scan</h3>
           <p className="text-sm text-slate-600">
-            Get accurate split amounts in real-time
+            Just snap a photo - OCR extracts the total automatically
           </p>
         </div>
 
@@ -159,7 +264,7 @@ function App() {
 
       {/* Footer */}
       <footer className="mt-16 text-center text-sm text-slate-500">
-        <p>Built with React + Vite + Tailwind CSS</p>
+        <p>Built with React + Vite + Tailwind CSS + OCR.space</p>
       </footer>
     </div>
   )
